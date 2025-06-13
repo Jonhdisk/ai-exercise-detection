@@ -28,8 +28,8 @@
         </div>
         
         <div class="video-container">
-            <video id="inputVideo" width="640" height="480"></video>
-            <canvas id="outputCanvas" width="640" height="480"></canvas>
+            <video id="inputVideo" width="1080" height="1920"></video>
+            <canvas id="outputCanvas" width="1080" height="1920"></canvas>
         </div>
         
         <div class="stats">
@@ -319,8 +319,8 @@
                     onFrame: async () => {
                         await pose.send({image: videoElement});
                     },
-                    width: 640,
-                    height: 480
+                    width: 1080,
+                    height: 1920
                 });
                 
                 await camera.start();
