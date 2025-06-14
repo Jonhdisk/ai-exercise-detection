@@ -1,732 +1,291 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Exercise Detection - MediaPipe BlazePose</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: white;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        h1 {
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 2.5rem;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-
-        .loading {
-            text-align: center;
-            padding: 50px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 15px;
-            backdrop-filter: blur(10px);
-        }
-
-        .spinner {
-            border: 4px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            border-top: 4px solid #fff;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .controls {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-bottom: 30px;
-            flex-wrap: wrap;
-        }
-
-        .controls button {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 25px;
-            background: rgba(255,255,255,0.2);
-            color: white;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 16px;
-            backdrop-filter: blur(10px);
-        }
-
-        .controls button:hover {
-            background: rgba(255,255,255,0.3);
-            transform: translateY(-2px);
-        }
-
-        .controls button.active {
-            background: #4CAF50;
-            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
-        }
-
-        .video-container {
-            position: relative;
-            display: flex;
-            justify-content: center;
-            margin-bottom: 30px;
-            border-radius: 15px;
-            overflow: hidden;
-            background: rgba(0,0,0,0.3);
-        }
-
-        #inputVideo {
-            display: none;
-        }
-
-        #outputCanvas {
-            max-width: 100%;
-            height: auto;
-            border-radius: 15px;
-        }
-
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .stat-card {
-            background: rgba(255,255,255,0.1);
-            border-radius: 15px;
-            padding: 20px;
-            text-align: center;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-
-        .stat-card h3 {
-            margin-bottom: 15px;
-            font-size: 1.1rem;
-            opacity: 0.9;
-        }
-
-        .stat-value {
-            font-size: 2.5rem;
-            font-weight: bold;
-            margin-bottom: 10px;
-            color: #4CAF50;
-        }
-
-        .balance-indicator {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        .balance-bar {
-            flex: 1;
-            height: 20px;
-            background: rgba(255,255,255,0.2);
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
-        .balance-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #ff4444, #ffff44, #44ff44);
-            transition: width 0.3s ease;
-        }
-
-        .warning {
-            background: rgba(255, 152, 0, 0.9);
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            margin-top: 20px;
-            animation: pulse 1.5s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
-
-        .start-instruction {
-            background: rgba(33, 150, 243, 0.9);
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            margin-top: 20px;
-            font-size: 1.2rem;
-            animation: glow 2s infinite alternate;
-        }
-
-        @keyframes glow {
-            from { box-shadow: 0 0 20px rgba(33, 150, 243, 0.5); }
-            to { box-shadow: 0 0 30px rgba(33, 150, 243, 0.8); }
-        }
-
-        /* Countdown Overlay */
-        .countdown-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(10px);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-
-        .countdown-number {
-            font-size: 15rem;
-            font-weight: bold;
-            color: #4CAF50;
-            text-shadow: 0 0 50px rgba(76, 175, 80, 0.8);
-            animation: countdownPulse 1s ease-in-out;
-        }
-
-        @keyframes countdownPulse {
-            0% { transform: scale(0.5); opacity: 0; }
-            50% { transform: scale(1.2); opacity: 1; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-
-        .countdown-text {
-            position: absolute;
-            bottom: 30%;
-            font-size: 2rem;
-            color: white;
-            text-align: center;
-        }
-
-        .fist-indicator {
-            background: rgba(255, 193, 7, 0.9);
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            margin-top: 20px;
-            font-size: 1.1rem;
-        }
-    </style>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <title>ตรวจจับการชนข้อมือ</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.0.0/dist/pose-detection.min.js"></script>
 </head>
 <body>
-    <div class="container">
-        <h1>🏋️‍♂️ AI Exercise Detection</h1>
-        
-        <div id="loading" class="loading">
-            <div class="spinner"></div>
-            <span>กำลังโหลด MediaPipe BlazePose...</span>
-        </div>
-        
-        <div class="controls">
-            <button id="pushupBtn" class="active" onclick="setExercise('pushup')">วิดพื้น (Push-up)</button>
-            <button id="squatBtn" onclick="setExercise('squat')">สควอท (Squat)</button>
-            <button id="plankBtn" onclick="setExercise('plank')">แพลงค์ (Plank)</button>
-            <button onclick="resetCounter()">รีเซ็ต</button>
-        </div>
-        
-        <div class="video-container">
-            <video id="inputVideo" width="640" height="480"></video>
-            <canvas id="outputCanvas" width="640" height="480"></canvas>
-        </div>
-        
-        <div class="stats">
-            <div class="stat-card">
-                <h3>จำนวนครั้ง</h3>
-                <div class="stat-value" id="exerciseCount">0</div>
-                <div id="exerciseType">Push-ups</div>
-            </div>
-            
-            <div class="stat-card">
-                <h3>คุณภาพท่าทาง</h3>
-                <div class="stat-value" id="formScore">--</div>
-                <div>คะแนน / 100</div>
-            </div>
-            
-            <div class="stat-card">
-                <h3>ความสมดุล</h3>
-                <div class="balance-indicator">
-                    <span>L</span>
-                    <div class="balance-bar">
-                        <div class="balance-fill" id="balanceFill" style="width: 50%;"></div>
-                    </div>
-                    <span>R</span>
-                </div>
-                <div id="balanceText">กำลังวิเคราะห์...</div>
-            </div>
-            
-            <div class="stat-card">
-                <h3>สถานะปัจจุบัน</h3>
-                <div class="stat-value" id="currentState">--</div>
-                <div id="currentAngle">มุม: --°</div>
-            </div>
-        </div>
-        
-        <div id="warningArea"></div>
-        <div id="instructionArea"></div>
+    <h1>ตรวจจับการชนข้อมือ</h1>
+    
+    <div id="loading">กำลังโหลด MoveNet Model...</div>
+    
+    <div>
+        <video id="inputVideo" width="640" height="480" autoplay playsinline></video>
+        <canvas id="outputCanvas" width="640" height="480" style="position: absolute; top: 0; left: 0;"></canvas>
+    </div>
+    
+    <div>
+        <p>จำนวนครั้งที่ชน: <span id="clapCount">0</span> / 3 ครั้ง</p>
+        <p>ระยะห่างข้อมือ: <span id="wristDistance">--</span> พิกเซล</p>
+        <p>สถานะ: <span id="statusText">กำลังเริ่มระบบ...</span></p>
+    </div>
+    
+    <div id="instructionArea">
+        <h3>คำแนะนำ:</h3>
+        <p>ชนข้อมือกัน 3 ครั้ง ระบบจะเริ่มนับถอยหลังอัตโนมัติ</p>
     </div>
 
     <!-- Countdown Overlay -->
-    <div id="countdownOverlay" class="countdown-overlay">
-        <div class="countdown-number" id="countdownNumber">5</div>
-        <div class="countdown-text">เตรียมตัวให้พร้อม!</div>
+    <div id="countdownOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; flex-direction: column; z-index: 1000;">
+        <div id="countdownNumber" style="font-size: 5rem; color: #FFD700; font-weight: bold;">5</div>
+        <div style="font-size: 2rem; color: white; margin-top: 20px;">เตรียมตัวให้พร้อม!</div>
     </div>
 
     <script>
-        // ตัวแปรสำหรับ MediaPipe
-        let pose;
-        let hands;
-        let camera;
+        // MoveNet keypoints mapping
+        const KEYPOINT_DICT = {
+            'left_wrist': 9,
+            'right_wrist': 10
+        };
+
+        // Variables
+        let detector;
+        let video;
+        let canvas;
+        let ctx;
+        let stream;
+        let animationId;
         
-        // ตัวแปรสำหรับการนับ
-        let exerciseCount = 0;
-        let currentExercise = 'pushup';
-        let exerciseState = 'up';
-        let isExerciseActive = false;
-        let isCountingDown = false;
-        let fistDetected = false;
-        let fistDetectionStartTime = null;
-        let countdownInterval = null;
+        // Wrist clap detection variables
+        let wristClapCount = 0;
+        let wristClapState = 'apart'; // 'apart' or 'together'
+        let lastClapTime = 0;
+        let clapDetectionThreshold = 100; // pixels
+        let clapCooldown = 800; // milliseconds
         
-        // ฟังก์ชันตรวจจับกำปั้น
-        function detectFist(handLandmarks) {
-            if (!handLandmarks || handLandmarks.length === 0) return false;
-            
-            // ตรวจสอบนิ้วทั้ง 5 นิ้วว่าหุบหรือไม่
-            // เปรียบเทียบตำแหน่ง tip กับ pip ของแต่ละนิ้ว
-            const landmarks = handLandmarks[0];
-            
-            // นิ้วโป้ง (Thumb)
-            const thumbTip = landmarks[4];
-            const thumbPip = landmarks[3];
-            const thumbClosed = thumbTip.y > thumbPip.y;
-            
-            // นิ้วชี้ (Index)
-            const indexTip = landmarks[8];
-            const indexPip = landmarks[6];
-            const indexClosed = indexTip.y > indexPip.y;
-            
-            // นิ้วกลาง (Middle)
-            const middleTip = landmarks[12];
-            const middlePip = landmarks[10];
-            const middleClosed = middleTip.y > middlePip.y;
-            
-            // นิ้วนาง (Ring)
-            const ringTip = landmarks[16];
-            const ringPip = landmarks[14];
-            const ringClosed = ringTip.y > ringPip.y;
-            
-            // นิ้วก้อย (Pinky)
-            const pinkyTip = landmarks[20];
-            const pinkyPip = landmarks[18];
-            const pinkyClosed = pinkyTip.y > pinkyPip.y;
-            
-            // ถ้านิ้วอย่างน้อย 4 นิ้วหุบ = กำปั้น
-            const closedFingers = [thumbClosed, indexClosed, middleClosed, ringClosed, pinkyClosed].filter(Boolean).length;
-            return closedFingers >= 4;
+        // Initialize system
+        async function initializeSystem() {
+            try {
+                console.log('Loading MoveNet model...');
+                
+                // Load MoveNet model
+                const model = poseDetection.SupportedModels.MoveNet;
+                const detectorConfig = {
+                    modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
+                };
+                
+                detector = await poseDetection.createDetector(model, detectorConfig);
+                console.log('MoveNet model loaded successfully');
+                
+                // Setup video
+                video = document.getElementById('inputVideo');
+                canvas = document.getElementById('outputCanvas');
+                ctx = canvas.getContext('2d');
+                
+                // Get camera stream
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: 640,
+                        height: 480,
+                        facingMode: 'user'
+                    }
+                });
+                
+                video.srcObject = stream;
+                video.addEventListener('loadeddata', () => {
+                    console.log('Video loaded, starting detection...');
+                    detectPose();
+                    updateStatusText('กำลังตรวจจับการชนข้อมือ...');
+                });
+                
+                // Hide loading
+                document.getElementById('loading').style.display = 'none';
+                
+            } catch (error) {
+                console.error('Error initializing system:', error);
+                document.getElementById('loading').innerHTML = 'ไม่สามารถเริ่มระบบได้ กรุณาตรวจสอบการเชื่อมต่อกล้อง';
+            }
         }
         
-        // ฟังก์ชันเริ่มการนับถอยหลัง
+        // Calculate distance between two points
+        function calculateDistance(point1, point2) {
+            const dx = point1.x - point2.x;
+            const dy = point1.y - point2.y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+        
+        // Update status text
+        function updateStatusText(text) {
+            document.getElementById('statusText').textContent = text;
+        }
+        
+        // Detect wrist clap
+        function detectWristClap(keypoints) {
+            const leftWrist = keypoints[KEYPOINT_DICT.left_wrist];
+            const rightWrist = keypoints[KEYPOINT_DICT.right_wrist];
+            
+            // Check if both wrists are detected with good confidence
+            if (!leftWrist || !rightWrist || leftWrist.score < 0.4 || rightWrist.score < 0.4) {
+                return false;
+            }
+            
+            const currentTime = Date.now();
+            const wristDistance = calculateDistance(leftWrist, rightWrist);
+            
+            // Update distance display
+            document.getElementById('wristDistance').textContent = Math.round(wristDistance);
+            
+            // Detect clap (wrists coming together)
+            if (wristDistance < clapDetectionThreshold && wristClapState === 'apart' && 
+                currentTime - lastClapTime > clapCooldown) {
+                
+                wristClapState = 'together';
+                wristClapCount++;
+                lastClapTime = currentTime;
+                
+                // Update UI
+                document.getElementById('clapCount').textContent = wristClapCount;
+                updateStatusText(`ชนครั้งที่ ${wristClapCount}! ${wristClapCount < 3 ? `อีก ${3 - wristClapCount} ครั้ง` : 'เสร็จสิ้น!'}`);
+                
+                // Check if we've reached 3 claps
+                if (wristClapCount >= 3) {
+                    completeWristClapDetection();
+                    return true;
+                }
+                
+            } else if (wristDistance > clapDetectionThreshold * 1.5 && wristClapState === 'together') {
+                wristClapState = 'apart';
+            }
+            
+            // Draw wrist clap visualization
+            drawWristClapVisualization(leftWrist, rightWrist, wristDistance);
+            
+            return false;
+        }
+        
+        // Draw wrist clap visualization
+        function drawWristClapVisualization(leftWrist, rightWrist, distance) {
+            // Draw line between wrists
+            ctx.strokeStyle = distance < clapDetectionThreshold ? '#FF0000' : '#00FF00';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(leftWrist.x, leftWrist.y);
+            ctx.lineTo(rightWrist.x, rightWrist.y);
+            ctx.stroke();
+            
+            // Draw wrist circles
+            ctx.fillStyle = distance < clapDetectionThreshold ? '#FF0000' : '#00FF00';
+            ctx.beginPath();
+            ctx.arc(leftWrist.x, leftWrist.y, 12, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.arc(rightWrist.x, rightWrist.y, 12, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Draw distance text
+            const midX = (leftWrist.x + rightWrist.x) / 2;
+            const midY = (leftWrist.y + rightWrist.y) / 2;
+            
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.strokeText(`${Math.round(distance)}px`, midX, midY - 20);
+            ctx.fillText(`${Math.round(distance)}px`, midX, midY - 20);
+        }
+        
+        // Complete wrist clap detection
+        function completeWristClapDetection() {
+            updateStatusText('ตรวจจับเสร็จสิ้น! กำลังเริ่มนับถอยหลัง...');
+            
+            // Start countdown after successful wrist claps
+            setTimeout(() => {
+                startCountdown();
+            }, 1000);
+        }
+        
+        // Start countdown
         function startCountdown() {
-            if (isCountingDown || isExerciseActive) return;
-            
-            isCountingDown = true;
-            let countdown = 5;
-            
             const overlay = document.getElementById('countdownOverlay');
-            const number = document.getElementById('countdownNumber');
+            const numberElement = document.getElementById('countdownNumber');
             
             overlay.style.display = 'flex';
-            number.textContent = countdown;
+            let count = 5;
             
-            countdownInterval = setInterval(() => {
-                countdown--;
-                if (countdown > 0) {
-                    number.textContent = countdown;
-                    number.style.animation = 'none';
-                    setTimeout(() => {
-                        number.style.animation = 'countdownPulse 1s ease-in-out';
-                    }, 10);
-                } else {
+            const countdownInterval = setInterval(() => {
+                numberElement.textContent = count;
+                
+                count--;
+                
+                if (count < 0) {
                     clearInterval(countdownInterval);
-                    overlay.style.display = 'none';
-                    isCountingDown = false;
-                    isExerciseActive = true;
-                    updateInstructionArea();
+                    
+                    // Show "GO!" or "เริ่ม!"
+                    numberElement.textContent = 'เริ่ม!';
+                    numberElement.style.color = '#00FF00';
+                    
+                    setTimeout(() => {
+                        overlay.style.display = 'none';
+                        numberElement.style.color = '#FFD700';
+                        
+                        // Reset system for next round
+                        resetSystem();
+                        
+                        alert('เริ่มทำงาน! สามารถเริ่มกิจกรรมได้แล้ว');
+                    }, 1500);
                 }
             }, 1000);
         }
         
-        // ฟังก์ชันอัปเดตคำแนะนำ
-        function updateInstructionArea() {
-            const instructionArea = document.getElementById('instructionArea');
+        // Reset system
+        function resetSystem() {
+            wristClapCount = 0;
+            wristClapState = 'apart';
+            lastClapTime = 0;
             
-            if (!isExerciseActive && !isCountingDown) {
-                instructionArea.innerHTML = '<div class="start-instruction">👊 ทำกำปั้นเพื่อเริ่มออกกำลังกาย</div>';
-            } else if (isCountingDown) {
-                instructionArea.innerHTML = '';
-            } else if (isExerciseActive) {
-                instructionArea.innerHTML = '<div class="fist-indicator">🏃‍♂️ กำลังออกกำลังกาย - ทำกำปั้นอีกครั้งเพื่อหยุด</div>';
-            }
+            document.getElementById('clapCount').textContent = '0';
+            document.getElementById('wristDistance').textContent = '--';
+            updateStatusText('รีเซ็ตเสร็จสิ้น - กำลังตรวจจับการชนข้อมือ...');
         }
         
-        // ฟังก์ชันคำนวณมุม
-        function calculateAngle(a, b, c) {
-            const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
-            let angle = Math.abs(radians * 180.0 / Math.PI);
-            if (angle > 180.0) {
-                angle = 360 - angle;
+        // Draw pose on canvas
+        function drawPose(poses) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            if (poses.length > 0) {
+                const pose = poses[0];
+                const keypoints = pose.keypoints;
+                
+                // Always check for wrist clap
+                detectWristClap(keypoints);
+                
+                return keypoints;
             }
-            return angle;
+            return null;
         }
         
-        // การตรวจจับ Push-up
-        function detectPushup(landmarks) {
-            if (!isExerciseActive) return null;
-            
-            try {
-                const leftShoulder = landmarks[11];
-                const leftElbow = landmarks[13];
-                const leftWrist = landmarks[15];
-                const rightShoulder = landmarks[12];
-                const rightElbow = landmarks[14];
-                const rightWrist = landmarks[16];
-                
-                const leftAngle = calculateAngle(leftShoulder, leftElbow, leftWrist);
-                const rightAngle = calculateAngle(rightShoulder, rightElbow, rightWrist);
-                const avgAngle = (leftAngle + rightAngle) / 2;
-                
-                // ความสมดุล
-                const balanceDiff = Math.abs(leftAngle - rightAngle);
-                const balanceScore = Math.max(0, 100 - balanceDiff * 2);
-                
-                // การนับ
-                if (avgAngle > 160 && exerciseState === 'down') {
-                    exerciseState = 'up';
-                    exerciseCount++;
-                }
-                else if (avgAngle < 90 && exerciseState === 'up') {
-                    exerciseState = 'down';
-                }
-                
-                return {
-                    angle: avgAngle,
-                    balance: balanceScore,
-                    balanceDiff: balanceDiff,
-                    leftAngle: leftAngle,
-                    rightAngle: rightAngle,
-                    state: exerciseState
-                };
-            } catch (e) {
-                return null;
-            }
-        }
-        
-        // การตรวจจับ Squat
-        function detectSquat(landmarks) {
-            if (!isExerciseActive) return null;
-            
-            try {
-                const leftHip = landmarks[23];
-                const leftKnee = landmarks[25];
-                const leftAnkle = landmarks[27];
-                const rightHip = landmarks[24];
-                const rightKnee = landmarks[26];
-                const rightAnkle = landmarks[28];
-                
-                const leftAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
-                const rightAngle = calculateAngle(rightHip, rightKnee, rightAnkle);
-                const avgAngle = (leftAngle + rightAngle) / 2;
-                
-                const balanceDiff = Math.abs(leftAngle - rightAngle);
-                const balanceScore = Math.max(0, 100 - balanceDiff * 3);
-                
-                if (avgAngle > 160 && exerciseState === 'down') {
-                    exerciseState = 'up';
-                    exerciseCount++;
-                }
-                else if (avgAngle < 100 && exerciseState === 'up') {
-                    exerciseState = 'down';
-                }
-                
-                return {
-                    angle: avgAngle,
-                    balance: balanceScore,
-                    balanceDiff: balanceDiff,
-                    leftAngle: leftAngle,
-                    rightAngle: rightAngle,
-                    state: exerciseState
-                };
-            } catch (e) {
-                return null;
-            }
-        }
-        
-        // การตรวจจับ Plank
-        function detectPlank(landmarks) {
-            if (!isExerciseActive) return null;
-            
-            try {
-                const leftShoulder = landmarks[11];
-                const leftHip = landmarks[23];
-                const leftKnee = landmarks[25];
-                const rightShoulder = landmarks[12];
-                const rightHip = landmarks[24];
-                const rightKnee = landmarks[26];
-                
-                // มุมของหลัง (shoulder-hip-knee)
-                const leftBackAngle = calculateAngle(leftShoulder, leftHip, leftKnee);
-                const rightBackAngle = calculateAngle(rightShoulder, rightHip, rightKnee);
-                const avgBackAngle = (leftBackAngle + rightBackAngle) / 2;
-                
-                const balanceDiff = Math.abs(leftBackAngle - rightBackAngle);
-                const balanceScore = Math.max(0, 100 - balanceDiff * 2);
-                
-                // Plank ที่ดีควรมีหลังตรง (มุมประมาณ 170-180 องศา)
-                const formScore = Math.max(0, 100 - Math.abs(180 - avgBackAngle) * 2);
-                
-                return {
-                    angle: avgBackAngle,
-                    balance: balanceScore,
-                    balanceDiff: balanceDiff,
-                    formScore: formScore,
-                    state: formScore > 70 ? 'good' : 'poor'
-                };
-            } catch (e) {
-                return null;
-            }
-        }
-        
-        // ฟังก์ชันแสดงผลบนหน้าจอ
-        function updateUI(exerciseData) {
-            document.getElementById('exerciseCount').textContent = exerciseCount;
-            
-            if (exerciseData) {
-                document.getElementById('formScore').textContent = Math.round(exerciseData.balance || exerciseData.formScore || 0);
-                document.getElementById('currentState').textContent = exerciseData.state;
-                document.getElementById('currentAngle').textContent = `มุม: ${Math.round(exerciseData.angle)}°`;
-                
-                // Balance indicator
-                const balancePercentage = exerciseData.balance || 50;
-                document.getElementById('balanceFill').style.width = balancePercentage + '%';
-                
-                if (exerciseData.balanceDiff !== undefined) {
-                    if (exerciseData.balanceDiff < 10) {
-                        document.getElementById('balanceText').textContent = 'สมดุลดี';
-                    } else if (exerciseData.balanceDiff < 20) {
-                        document.getElementById('balanceText').textContent = 'เอียงเล็กน้อย';
-                    } else {
-                        document.getElementById('balanceText').textContent = 'ไม่สมดุล!';
-                    }
-                }
-                
-                // Warning
-                const warningArea = document.getElementById('warningArea');
-                if (exerciseData.balanceDiff > 20) {
-                    warningArea.innerHTML = '<div class="warning">⚠️ ตรวจพบความไม่สมดุล! โปรดปรับท่าทาง</div>';
-                } else {
-                    warningArea.innerHTML = '';
+        // Main detection loop
+        async function detectPose() {
+            if (video.readyState >= 2) {
+                try {
+                    const poses = await detector.estimatePoses(video);
+                    drawPose(poses);
+                } catch (error) {
+                    console.error('Detection error:', error);
                 }
             }
+            
+            animationId = requestAnimationFrame(detectPose);
         }
         
-        // ฟังก์ชันวิเคราะห์ผลลัพธ์จาก MediaPipe
-        function onResults(results) {
-            const canvasElement = document.getElementById('outputCanvas');
-            const canvasCtx = canvasElement.getContext('2d');
-            
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-            
-            // ตรวจจับมือสำหรับกำปั้น
-            if (results.multiHandLandmarks) {
-                const currentFistDetected = detectFist(results.multiHandLandmarks);
-                
-                if (currentFistDetected && !fistDetected) {
-                    fistDetected = true;
-                    fistDetectionStartTime = Date.now();
-                    
-                    if (!isExerciseActive && !isCountingDown) {
-                        startCountdown();
-                    } else if (isExerciseActive) {
-                        // หยุดการออกกำลังกาย
-                        isExerciseActive = false;
-                        updateInstructionArea();
-                    }
-                } else if (!currentFistDetected && fistDetected) {
-                    fistDetected = false;
-                    fistDetectionStartTime = null;
-                }
-                
-                // วาดจุดมือ
-                for (const landmarks of results.multiHandLandmarks) {
-                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00CC00', lineWidth: 2});
-                    drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 1});
-                }
-            } else {
-                fistDetected = false;
-                fistDetectionStartTime = null;
-            }
-            
-            if (results.poseLandmarks) {
-                // วาด pose landmarks
-                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
-                drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 1});
-                
-                // วิเคราะห์การออกกำลังกาย
-                let exerciseData = null;
-                
-                switch(currentExercise) {
-                    case 'pushup':
-                        exerciseData = detectPushup(results.poseLandmarks);
-                        break;
-                    case 'squat':
-                        exerciseData = detectSquat(results.poseLandmarks);
-                        break;
-                    case 'plank':
-                        exerciseData = detectPlank(results.poseLandmarks);
-                        break;
-                }
-                
-                updateUI(exerciseData);
-            }
-            
-            canvasCtx.restore();
-        }
-        
-        // เปลี่ยนประเภทการออกกำลังกาย
-        function setExercise(exercise) {
-            currentExercise = exercise;
-            exerciseState = 'up';
-            isExerciseActive = false;
-            
-            // อัปเดต UI
-            document.querySelectorAll('.controls button').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(exercise + 'Btn').classList.add('active');
-            
-            const exerciseNames = {
-                'pushup': 'Push-ups',
-                'squat': 'Squats', 
-                'plank': 'Plank Hold'
-            };
-            
-            document.getElementById('exerciseType').textContent = exerciseNames[exercise];
-            updateInstructionArea();
-        }
-        
-        // รีเซ็ตตัวนับ
-        function resetCounter() {
-            exerciseCount = 0;
-            exerciseState = 'up';
-            isExerciseActive = false;
-            isCountingDown = false;
-            
-            if (countdownInterval) {
-                clearInterval(countdownInterval);
-                countdownInterval = null;
-            }
-            
-            document.getElementById('countdownOverlay').style.display = 'none';
-            document.getElementById('exerciseCount').textContent = '0';
-            document.getElementById('warningArea').innerHTML = '';
-            updateInstructionArea();
-        }
-        
-        // เริ่มต้นระบบ
-        async function initializeSystem() {
-            try {
-                // โหลด MediaPipe Pose
-                pose = new Pose({
-                    locateFile: (file) => {
-                        return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
-                    }
-                });
-                
-                pose.setOptions({
-                    modelComplexity: 2,
-                    smoothLandmarks: true,
-                    enableSegmentation: false,
-                    smoothSegmentation: false,
-                    minDetectionConfidence: 0.7,
-                    minTrackingConfidence: 0.5
-                });
-                
-                // โหลด MediaPipe Hands
-                hands = new Hands({
-                    locateFile: (file) => {
-                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-                    }
-                });
-                
-                hands.setOptions({
-                    maxNumHands: 2,
-                    modelComplexity: 1,
-                    minDetectionConfidence: 0.5,
-                    minTrackingConfidence: 0.5
-                });
-                
-                // รวมผลลัพธ์จาก pose และ hands
-                pose.onResults((poseResults) => {
-                    hands.send({image: poseResults.image}).then((handResults) => {
-                        const combinedResults = {
-                            ...poseResults,
-                            multiHandLandmarks: handResults.multiHandLandmarks
-                        };
-                        onResults(combinedResults);
-                    });
-                });
-                
-                // เริ่มกล้อง
-                const videoElement = document.getElementById('inputVideo');
-                camera = new Camera(videoElement, {
-                    onFrame: async () => {
-                        await pose.send({image: videoElement});
-                    },
-                    width: 1080,
-                    height: 1920
-                });
-                
-                await camera.start();
-                
-                // ซ่อน loading และแสดงคำแนะนำ
-                document.getElementById('loading').style.display = 'none';
-                updateInstructionArea();
-                
-            } catch (error) {
-                console.error('Error initializing system:', error);
-                document.getElementById('loading').innerHTML = '<div style="color: red;">❌ ไม่สามารถเริ่มระบบได้ กรุณาตรวจสอบการเชื่อมต่อกล้อง</div>';
-            }
-        }
-        
-        // เริ่มระบบเมื่อหน้าเว็บโหลดเสร็จ
+        // Initialize when page loads
         window.addEventListener('load', initializeSystem);
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+        });
     </script>
 </body>
 </html>
