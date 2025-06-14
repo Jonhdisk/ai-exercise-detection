@@ -3,35 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ตรวจจับการชนข้อมือ</title>
+    <title>ตรวจจับการโบกมือ</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.0.0/dist/pose-detection.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 10px;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            text-align: center;
+        }
+        
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+        }
+        
+        .video-container {
+            position: relative;
+            display: inline-block;
+            margin: 20px auto;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        
+        #inputVideo, #outputCanvas {
+            width: 320px;
+            height: 240px;
+            display: block;
+        }
+        
+        #inputVideo {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        
+        #outputCanvas {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .info-panel {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px auto;
+            max-width: 320px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .status-text {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin: 10px 0;
+        }
+        
+        .wave-count {
+            font-size: 24px;
+            color: #2196F3;
+            font-weight: bold;
+        }
+        
+        .instruction {
+            background: #e3f2fd;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px auto;
+            max-width: 320px;
+            border-left: 4px solid #2196F3;
+        }
+        
+        #loading {
+            font-size: 18px;
+            color: #666;
+            padding: 20px;
+        }
+        
+        @media (max-width: 480px) {
+            #inputVideo, #outputCanvas {
+                width: 280px;
+                height: 210px;
+            }
+            
+            .info-panel, .instruction {
+                max-width: 280px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <h1>ตรวจจับการชนข้อมือ</h1>
-    
-    <div id="loading">กำลังโหลด MoveNet Model...</div>
-    
-    <div>
-        <video id="inputVideo" width="640" height="480" autoplay playsinline></video>
-        <canvas id="outputCanvas" width="640" height="480" style="position: absolute; top: 0; left: 0;"></canvas>
-    </div>
-    
-    <div>
-        <p>จำนวนครั้งที่ชน: <span id="clapCount">0</span> / 3 ครั้ง</p>
-        <p>ระยะห่างข้อมือ: <span id="wristDistance">--</span> พิกเซล</p>
-        <p>สถานะ: <span id="statusText">กำลังเริ่มระบบ...</span></p>
-    </div>
-    
-    <div id="instructionArea">
-        <h3>คำแนะนำ:</h3>
-        <p>ชนข้อมือกัน 3 ครั้ง ระบบจะเริ่มนับถอยหลังอัตโนมัติ</p>
+    <div class="container">
+        <h1>ตรวจจับการโบกมือ</h1>
+        
+        <div id="loading">กำลังโหลด MoveNet Model...</div>
+        
+        <div class="video-container" id="videoContainer" style="display: none;">
+            <video id="inputVideo" width="320" height="240" autoplay playsinline muted></video>
+            <canvas id="outputCanvas" width="320" height="240"></canvas>
+        </div>
+        
+        <div class="info-panel">
+            <div class="status-text" id="statusText">กำลังเริ่มระบบ...</div>
+            <div>จำนวนครั้งที่โบก: <span class="wave-count" id="waveCount">0</span> / 3 ครั้ง</div>
+            <div>ระยะการเคลื่อนไหวมือ: <span id="handMovement">--</span></div>
+        </div>
+        
+        <div class="instruction">
+            <h3>คำแนะนำ:</h3>
+            <p>ยกมือขวาขึ้นแล้วโบกซ้าย-ขวา 3 ครั้ง<br>ระบบจะเริ่มนับถอยหลังอัตโนมัติ</p>
+        </div>
     </div>
 
     <!-- Countdown Overlay -->
     <div id="countdownOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; flex-direction: column; z-index: 1000;">
-        <div id="countdownNumber" style="font-size: 5rem; color: #FFD700; font-weight: bold;">5</div>
-        <div style="font-size: 2rem; color: white; margin-top: 20px;">เตรียมตัวให้พร้อม!</div>
+        <div id="countdownNumber" style="font-size: 4rem; color: #FFD700; font-weight: bold;">5</div>
+        <div style="font-size: 1.5rem; color: white; margin-top: 20px;">เตรียมตัวให้พร้อม!</div>
     </div>
 
     <script>
@@ -64,12 +154,14 @@
         let stream;
         let animationId;
         
-        // Wrist clap detection variables
-        let wristClapCount = 0;
-        let wristClapState = 'apart'; // 'apart' or 'together'
-        let lastClapTime = 0;
-        let clapDetectionThreshold = 100; // pixels
-        let clapCooldown = 800; // milliseconds
+        // Hand wave detection variables
+        let waveCount = 0;
+        let waveState = 'center'; // 'left', 'center', 'right'
+        let lastWaveTime = 0;
+        let waveCooldown = 500; // milliseconds
+        let rightWristHistory = [];
+        let historyLength = 10;
+        let waveThreshold = 50; // pixels movement threshold
         
         // Initialize system
         async function initializeSystem() {
@@ -93,8 +185,8 @@
                 // Get camera stream
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
-                        width: 640,
-                        height: 480,
+                        width: 320,
+                        height: 240,
                         facingMode: 'user'
                     }
                 });
@@ -102,8 +194,9 @@
                 video.srcObject = stream;
                 video.addEventListener('loadeddata', () => {
                     console.log('Video loaded, starting detection...');
+                    document.getElementById('videoContainer').style.display = 'block';
                     detectPose();
-                    updateStatusText('กำลังตรวจจับการชนข้อมือ...');
+                    updateStatusText('กำลังตรวจจับการโบกมือ...');
                 });
                 
                 // Hide loading
@@ -115,100 +208,136 @@
             }
         }
         
-        // Calculate distance between two points
-        function calculateDistance(point1, point2) {
-            const dx = point1.x - point2.x;
-            const dy = point1.y - point2.y;
-            return Math.sqrt(dx * dx + dy * dy);
-        }
-        
         // Update status text
         function updateStatusText(text) {
             document.getElementById('statusText').textContent = text;
         }
         
-        // Detect wrist clap
-        function detectWristClap(keypoints) {
-            const leftWrist = keypoints[KEYPOINT_DICT.left_wrist];
+        // Detect hand wave
+        function detectHandWave(keypoints) {
             const rightWrist = keypoints[KEYPOINT_DICT.right_wrist];
+            const rightShoulder = keypoints[KEYPOINT_DICT.right_shoulder];
             
-            // Check if both wrists are detected with good confidence
-            if (!leftWrist || !rightWrist || leftWrist.score < 0.4 || rightWrist.score < 0.4) {
+            // Check if right wrist and shoulder are detected with good confidence
+            if (!rightWrist || !rightShoulder || rightWrist.score < 0.4 || rightShoulder.score < 0.4) {
+                return false;
+            }
+            
+            // Check if hand is raised (wrist above shoulder)
+            if (rightWrist.y > rightShoulder.y) {
+                updateStatusText('ยกมือขวาขึ้นเพื่อเริ่มโบก');
                 return false;
             }
             
             const currentTime = Date.now();
-            const wristDistance = calculateDistance(leftWrist, rightWrist);
             
-            // Update distance display
-            document.getElementById('wristDistance').textContent = Math.round(wristDistance);
+            // Add current wrist position to history
+            rightWristHistory.push({
+                x: rightWrist.x,
+                y: rightWrist.y,
+                time: currentTime
+            });
             
-            // Detect clap (wrists coming together)
-            if (wristDistance < clapDetectionThreshold && wristClapState === 'apart' && 
-                currentTime - lastClapTime > clapCooldown) {
-                
-                wristClapState = 'together';
-                wristClapCount++;
-                lastClapTime = currentTime;
-                
-                // Update UI
-                document.getElementById('clapCount').textContent = wristClapCount;
-                updateStatusText(`ชนครั้งที่ ${wristClapCount}! ${wristClapCount < 3 ? `อีก ${3 - wristClapCount} ครั้ง` : 'เสร็จสิ้น!'}`);
-                
-                // Check if we've reached 3 claps
-                if (wristClapCount >= 3) {
-                    completeWristClapDetection();
-                    return true;
-                }
-                
-            } else if (wristDistance > clapDetectionThreshold * 1.5 && wristClapState === 'together') {
-                wristClapState = 'apart';
+            // Keep only recent history
+            if (rightWristHistory.length > historyLength) {
+                rightWristHistory.shift();
             }
             
-            // Draw wrist clap visualization
-            drawWristClapVisualization(leftWrist, rightWrist, wristDistance);
+            // Need enough history to detect wave
+            if (rightWristHistory.length < historyLength) {
+                return false;
+            }
+            
+            // Calculate horizontal movement
+            const oldPos = rightWristHistory[0];
+            const newPos = rightWristHistory[rightWristHistory.length - 1];
+            const horizontalMovement = Math.abs(newPos.x - oldPos.x);
+            
+            // Update movement display
+            document.getElementById('handMovement').textContent = `${Math.round(horizontalMovement)}px`;
+            
+            // Detect wave pattern (significant horizontal movement)
+            if (horizontalMovement > waveThreshold && currentTime - lastWaveTime > waveCooldown) {
+                
+                // Determine wave direction
+                const direction = newPos.x > oldPos.x ? 'right' : 'left';
+                
+                // Check for complete wave cycle
+                if ((waveState === 'center' && direction === 'right') ||
+                    (waveState === 'right' && direction === 'left') ||
+                    (waveState === 'left' && direction === 'right')) {
+                    
+                    if (waveState === 'left' && direction === 'right') {
+                        // Complete wave cycle
+                        waveCount++;
+                        lastWaveTime = currentTime;
+                        
+                        // Update UI
+                        document.getElementById('waveCount').textContent = waveCount;
+                        updateStatusText(`โบกครั้งที่ ${waveCount}! ${waveCount < 3 ? `อีก ${3 - waveCount} ครั้ง` : 'เสร็จสิ้น!'}`);
+                        
+                        // Check if we've reached 3 waves
+                        if (waveCount >= 3) {
+                            completeHandWaveDetection();
+                            return true;
+                        }
+                    }
+                    
+                    waveState = direction;
+                }
+                
+                // Clear history after detection
+                rightWristHistory = [];
+            }
+            
+            // Draw wave visualization
+            drawWaveVisualization(rightWrist, rightShoulder, horizontalMovement);
             
             return false;
         }
         
-        // Draw wrist clap visualization
-        function drawWristClapVisualization(leftWrist, rightWrist, distance) {
-            // Draw line between wrists (on top of skeleton)
-            ctx.strokeStyle = distance < clapDetectionThreshold ? '#FF0000' : '#FFFF00';
-            ctx.lineWidth = 6;
+        // Draw wave visualization
+        function drawWaveVisualization(rightWrist, rightShoulder, movement) {
+            // Draw hand raised indicator
+            ctx.strokeStyle = rightWrist.y < rightShoulder.y ? '#00FF00' : '#FF0000';
+            ctx.lineWidth = 4;
             ctx.beginPath();
-            ctx.moveTo(leftWrist.x, leftWrist.y);
+            ctx.moveTo(rightShoulder.x, rightShoulder.y);
             ctx.lineTo(rightWrist.x, rightWrist.y);
             ctx.stroke();
             
-            // Draw wrist circles (larger and more visible)
-            ctx.fillStyle = distance < clapDetectionThreshold ? '#FF0000' : '#FFFF00';
+            // Draw wrist circle
+            ctx.fillStyle = movement > waveThreshold ? '#FFD700' : '#00FF00';
             ctx.beginPath();
-            ctx.arc(leftWrist.x, leftWrist.y, 15, 0, 2 * Math.PI);
+            ctx.arc(rightWrist.x, rightWrist.y, 12, 0, 2 * Math.PI);
             ctx.fill();
             
-            ctx.beginPath();
-            ctx.arc(rightWrist.x, rightWrist.y, 15, 0, 2 * Math.PI);
-            ctx.fill();
+            // Draw movement indicator
+            if (movement > waveThreshold) {
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 6;
+                ctx.beginPath();
+                ctx.arc(rightWrist.x, rightWrist.y, 25, 0, 2 * Math.PI);
+                ctx.stroke();
+            }
             
-            // Draw distance text
-            const midX = (leftWrist.x + rightWrist.x) / 2;
-            const midY = (leftWrist.y + rightWrist.y) / 2;
-            
+            // Draw status text on canvas
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 24px Arial';
+            ctx.font = 'bold 16px Arial';
             ctx.textAlign = 'center';
             ctx.strokeStyle = '#000000';
-            ctx.lineWidth = 3;
-            ctx.strokeText(`${Math.round(distance)}px`, midX, midY - 30);
-            ctx.fillText(`${Math.round(distance)}px`, midX, midY - 30);
+            ctx.lineWidth = 2;
+            
+            const statusText = rightWrist.y < rightShoulder.y ? 'โบกซ้าย-ขวา' : 'ยกมือขึ้น';
+            ctx.strokeText(statusText, rightWrist.x, rightWrist.y - 40);
+            ctx.fillText(statusText, rightWrist.x, rightWrist.y - 40);
         }
         
-        // Complete wrist clap detection
-        function completeWristClapDetection() {
+        // Complete hand wave detection
+        function completeHandWaveDetection() {
             updateStatusText('ตรวจจับเสร็จสิ้น! กำลังเริ่มนับถอยหลัง...');
             
-            // Start countdown after successful wrist claps
+            // Start countdown after successful waves
             setTimeout(() => {
                 startCountdown();
             }, 1000);
@@ -249,13 +378,14 @@
         
         // Reset system
         function resetSystem() {
-            wristClapCount = 0;
-            wristClapState = 'apart';
-            lastClapTime = 0;
+            waveCount = 0;
+            waveState = 'center';
+            lastWaveTime = 0;
+            rightWristHistory = [];
             
-            document.getElementById('clapCount').textContent = '0';
-            document.getElementById('wristDistance').textContent = '--';
-            updateStatusText('รีเซ็ตเสร็จสิ้น - กำลังตรวจจับการชนข้อมือ...');
+            document.getElementById('waveCount').textContent = '0';
+            document.getElementById('handMovement').textContent = '--';
+            updateStatusText('รีเซ็ตเสร็จสิ้น - กำลังตรวจจับการโบกมือ...');
         }
         
         // Draw basic skeleton
@@ -265,14 +395,8 @@
             keypoints.forEach((keypoint, index) => {
                 if (keypoint.score > 0.3) {
                     ctx.beginPath();
-                    ctx.arc(keypoint.x, keypoint.y, 6, 0, 2 * Math.PI);
+                    ctx.arc(keypoint.x, keypoint.y, 4, 0, 2 * Math.PI);
                     ctx.fill();
-                    
-                    // Label keypoints for debugging
-                    ctx.fillStyle = '#FFFFFF';
-                    ctx.font = '12px Arial';
-                    ctx.fillText(index, keypoint.x + 8, keypoint.y - 8);
-                    ctx.fillStyle = '#00FF00';
                 }
             });
             
@@ -285,8 +409,6 @@
                 [11, 12], // hips
                 [11, 13], [13, 15], // left leg
                 [12, 14], [14, 16], // right leg
-                [0, 1], [0, 2], // face
-                [1, 3], [2, 4] // ears
             ];
             
             ctx.strokeStyle = '#00FF00';
@@ -317,8 +439,8 @@
                 // Draw basic skeleton first
                 drawBasicSkeleton(keypoints);
                 
-                // Then check for wrist clap and draw wrist visualization
-                detectWristClap(keypoints);
+                // Then check for hand wave and draw visualization
+                detectHandWave(keypoints);
                 
                 return keypoints;
             }
