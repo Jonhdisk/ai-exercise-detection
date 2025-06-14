@@ -3,18 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ตรวจจับการชนข้อมืออออออออ</title>
+    <title>ตรวจจับการชนข้อมือ</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.0.0/dist/pose-detection.min.js"></script>
 </head>
 <body>
-    <h1>ตรวจจับการชนข้อมือ11</h1>
+    <h1>ตรวจจับการชนข้อมือ</h1>
     
     <div id="loading">กำลังโหลด MoveNet Model...</div>
     
     <div>
-        <video id="inputVideo" width="640" height="480" autoplay playsinline style="transform: scaleX(-1);"></video>
-        <canvas id="outputCanvas" width="640" height="480"></canvas>
+     <video id="inputVideo" autoplay playsinline style="display: none;"></video>
+    <canvas id="outputCanvas" width="640" height="480" style="width: 100%; max-width: 640px;"></canvas>
+
     </div>
     
     <div>
@@ -321,30 +322,28 @@
         }
 
         // Draw pose on canvas
-        function drawPose(poses) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Draw mirrored video background
-            ctx.save();
-            ctx.scale(-1, 1);
-            ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-            ctx.restore();
-            
-            if (poses.length > 0) {
-                const pose = poses[0];
-                const keypoints = pose.keypoints;
-                
-                // Draw basic skeleton first (with mirrored coordinates)
-                drawBasicSkeleton(keypoints);
-                
-                // Then check for wrist clap and draw wrist visualization
-                detectWristClap(keypoints);
-                
-                return keypoints;
-            }
-            return null;
-        }
-        
+    function drawPose(poses) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // วาดภาพจากกล้องลง canvas
+        ctx.save();
+        ctx.scale(-1, 1); // mirror
+        ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+    if (poses.length > 0) {
+        const pose = poses[0];
+        const keypoints = pose.keypoints;
+
+        drawBasicSkeleton(keypoints);      // โครงกระดูก
+        detectWristClap(keypoints);        // ตรวจจับการชนข้อมือ
+
+        return keypoints;
+    }
+
+    return null;
+}
+
         // Main detection loop
         async function detectPose() {
             if (video.readyState >= 2) {
