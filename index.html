@@ -30,8 +30,8 @@
         }
         
         #inputVideo, #outputCanvas {
-            width: 320px;
-            height: 240px;
+            width: 280px;
+            height: 500px;
             display: block;
         }
         
@@ -85,12 +85,12 @@
         
         @media (max-width: 480px) {
             #inputVideo, #outputCanvas {
-                width: 280px;
-                height: 210px;
+                width: 260px;
+                height: 460px;
             }
             
             .info-panel, .instruction {
-                max-width: 280px;
+                max-width: 260px;
             }
         }
     </style>
@@ -102,8 +102,8 @@
         <div id="loading">กำลังโหลด MoveNet Model...</div>
         
         <div class="video-container" id="videoContainer" style="display: none;">
-            <video id="inputVideo" width="320" height="240" autoplay playsinline muted></video>
-            <canvas id="outputCanvas" width="320" height="240"></canvas>
+            <video id="inputVideo" width="280" height="500" autoplay playsinline muted></video>
+            <canvas id="outputCanvas" width="280" height="500"></canvas>
         </div>
         
         <div class="info-panel">
@@ -185,9 +185,10 @@
                 // Get camera stream
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
-                        width: 320,
-                        height: 240,
-                        facingMode: 'user'
+                        width: 280,
+                        height: 500,
+                        facingMode: 'user',
+                        aspectRatio: 9/16 // มือถือแนวยาว
                     }
                 });
                 
