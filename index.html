@@ -13,11 +13,18 @@
             font-family: Arial, sans-serif;
             background-color: #f0f0f0;
             text-align: center;
+            box-sizing: border-box;
         }
         
         .container {
             max-width: 100%;
             margin: 0 auto;
+            padding: 0 10px;
+        }
+        
+        h1 {
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            margin: 10px 0;
         }
         
         .video-container {
@@ -27,12 +34,17 @@
             border-radius: 15px;
             overflow: hidden;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            max-width: 90vw;
+            max-height: 70vh;
         }
         
         #inputVideo, #outputCanvas {
-            width: 280px;
-            height: 500px;
+            width: 100%;
+            height: auto;
+            max-width: 400px;
+            max-height: 600px;
             display: block;
+            object-fit: cover;
         }
         
         #inputVideo {
@@ -51,19 +63,19 @@
             border-radius: 10px;
             padding: 15px;
             margin: 20px auto;
-            max-width: 320px;
+            max-width: min(400px, 90vw);
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
         .status-text {
-            font-size: 18px;
+            font-size: clamp(16px, 3vw, 18px);
             font-weight: bold;
             color: #333;
             margin: 10px 0;
         }
         
         .wave-count {
-            font-size: 24px;
+            font-size: clamp(20px, 4vw, 24px);
             color: #2196F3;
             font-weight: bold;
         }
@@ -73,24 +85,105 @@
             border-radius: 8px;
             padding: 15px;
             margin: 20px auto;
-            max-width: 320px;
+            max-width: min(400px, 90vw);
             border-left: 4px solid #2196F3;
         }
         
+        .instruction h3 {
+            font-size: clamp(16px, 3vw, 18px);
+            margin: 0 0 10px 0;
+        }
+        
+        .instruction p {
+            font-size: clamp(14px, 2.5vw, 16px);
+            margin: 0;
+            line-height: 1.4;
+        }
+        
         #loading {
-            font-size: 18px;
+            font-size: clamp(16px, 3vw, 18px);
             color: #666;
             padding: 20px;
         }
         
-        @media (max-width: 480px) {
-            #inputVideo, #outputCanvas {
-                width: 260px;
-                height: 460px;
+        /* Countdown Overlay */
+        #countdownOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 1000;
+        }
+        
+        #countdownNumber {
+            font-size: clamp(3rem, 15vw, 6rem);
+            color: #FFD700;
+            font-weight: bold;
+        }
+        
+        #countdownOverlay .subtitle {
+            font-size: clamp(1rem, 4vw, 1.5rem);
+            color: white;
+            margin-top: 20px;
+        }
+        
+        /* Responsive breakpoints */
+        @media (max-width: 768px) {
+            body {
+                padding: 5px;
+            }
+            
+            .container {
+                padding: 0 5px;
+            }
+            
+            .video-container {
+                margin: 15px auto;
+                max-height: 60vh;
             }
             
             .info-panel, .instruction {
-                max-width: 260px;
+                margin: 15px auto;
+                padding: 12px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .video-container {
+                margin: 10px auto;
+                max-height: 50vh;
+            }
+            
+            .info-panel, .instruction {
+                margin: 10px auto;
+                padding: 10px;
+            }
+        }
+        
+        /* Landscape orientation for mobile */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .video-container {
+                max-height: 40vh;
+                max-width: 60vw;
+            }
+            
+            .info-panel {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .info-panel > div {
+                flex: 1;
+                min-width: 150px;
             }
         }
     </style>
@@ -102,8 +195,8 @@
         <div id="loading">กำลังโหลด MoveNet Model...</div>
         
         <div class="video-container" id="videoContainer" style="display: none;">
-            <video id="inputVideo" width="280" height="500" autoplay playsinline muted></video>
-            <canvas id="outputCanvas" width="280" height="500"></canvas>
+            <video id="inputVideo" autoplay playsinline muted></video>
+            <canvas id="outputCanvas"></canvas>
         </div>
         
         <div class="info-panel">
@@ -119,9 +212,9 @@
     </div>
 
     <!-- Countdown Overlay -->
-    <div id="countdownOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; flex-direction: column; z-index: 1000;">
-        <div id="countdownNumber" style="font-size: 4rem; color: #FFD700; font-weight: bold;">5</div>
-        <div style="font-size: 1.5rem; color: white; margin-top: 20px;">เตรียมตัวให้พร้อม!</div>
+    <div id="countdownOverlay">
+        <div id="countdownNumber">5</div>
+        <div class="subtitle">เตรียมตัวให้พร้อม!</div>
     </div>
 
     <script>
@@ -153,6 +246,8 @@
         let ctx;
         let stream;
         let animationId;
+        let videoWidth = 640;
+        let videoHeight = 480;
         
         // Hand wave detection variables
         let waveCount = 0;
@@ -162,6 +257,29 @@
         let rightWristHistory = [];
         let historyLength = 10;
         let waveThreshold = 50; // pixels movement threshold
+        
+        // Resize canvas to match video dimensions
+        function resizeCanvas() {
+            if (video && video.videoWidth && video.videoHeight) {
+                videoWidth = video.videoWidth;
+                videoHeight = video.videoHeight;
+                
+                // Calculate responsive dimensions
+                const containerWidth = Math.min(400, window.innerWidth * 0.9);
+                const aspectRatio = videoHeight / videoWidth;
+                const containerHeight = containerWidth * aspectRatio;
+                
+                // Set canvas dimensions
+                canvas.width = videoWidth;
+                canvas.height = videoHeight;
+                
+                // Set display dimensions
+                canvas.style.width = containerWidth + 'px';
+                canvas.style.height = containerHeight + 'px';
+                video.style.width = containerWidth + 'px';
+                video.style.height = containerHeight + 'px';
+            }
+        }
         
         // Initialize system
         async function initializeSystem() {
@@ -182,23 +300,32 @@
                 canvas = document.getElementById('outputCanvas');
                 ctx = canvas.getContext('2d');
                 
-                // Get camera stream
-                stream = await navigator.mediaDevices.getUserMedia({
+                // Get camera stream with flexible constraints
+                const constraints = {
                     video: {
-                        width: 280,
-                        height: 500,
                         facingMode: 'user',
-                        aspectRatio: 9/16 // มือถือแนวยาว
+                        width: { ideal: 640, max: 1280 },
+                        height: { ideal: 480, max: 720 }
                     }
+                };
+                
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                
+                video.addEventListener('loadedmetadata', () => {
+                    console.log('Video metadata loaded');
+                    resizeCanvas();
                 });
                 
-                video.srcObject = stream;
                 video.addEventListener('loadeddata', () => {
                     console.log('Video loaded, starting detection...');
                     document.getElementById('videoContainer').style.display = 'block';
                     detectPose();
                     updateStatusText('กำลังตรวจจับการโบกมือ...');
                 });
+                
+                // Handle window resize
+                window.addEventListener('resize', resizeCanvas);
                 
                 // Hide loading
                 document.getElementById('loading').style.display = 'none';
@@ -214,10 +341,20 @@
             document.getElementById('statusText').textContent = text;
         }
         
+        // Scale coordinates to canvas dimensions
+        function scaleCoordinates(keypoints) {
+            return keypoints.map(keypoint => ({
+                ...keypoint,
+                x: keypoint.x * videoWidth,
+                y: keypoint.y * videoHeight
+            }));
+        }
+        
         // Detect hand wave
         function detectHandWave(keypoints) {
-            const rightWrist = keypoints[KEYPOINT_DICT.right_wrist];
-            const rightShoulder = keypoints[KEYPOINT_DICT.right_shoulder];
+            const scaledKeypoints = scaleCoordinates(keypoints);
+            const rightWrist = scaledKeypoints[KEYPOINT_DICT.right_wrist];
+            const rightShoulder = scaledKeypoints[KEYPOINT_DICT.right_shoulder];
             
             // Check if right wrist and shoulder are detected with good confidence
             if (!rightWrist || !rightShoulder || rightWrist.score < 0.4 || rightShoulder.score < 0.4) {
@@ -254,11 +391,14 @@
             const newPos = rightWristHistory[rightWristHistory.length - 1];
             const horizontalMovement = Math.abs(newPos.x - oldPos.x);
             
+            // Scale threshold based on video width
+            const scaledThreshold = waveThreshold * (videoWidth / 640);
+            
             // Update movement display
             document.getElementById('handMovement').textContent = `${Math.round(horizontalMovement)}px`;
             
             // Detect wave pattern (significant horizontal movement)
-            if (horizontalMovement > waveThreshold && currentTime - lastWaveTime > waveCooldown) {
+            if (horizontalMovement > scaledThreshold && currentTime - lastWaveTime > waveCooldown) {
                 
                 // Determine wave direction
                 const direction = newPos.x > oldPos.x ? 'right' : 'left';
@@ -292,13 +432,13 @@
             }
             
             // Draw wave visualization
-            drawWaveVisualization(rightWrist, rightShoulder, horizontalMovement);
+            drawWaveVisualization(rightWrist, rightShoulder, horizontalMovement, scaledThreshold);
             
             return false;
         }
         
         // Draw wave visualization
-        function drawWaveVisualization(rightWrist, rightShoulder, movement) {
+        function drawWaveVisualization(rightWrist, rightShoulder, movement, threshold) {
             // Draw hand raised indicator
             ctx.strokeStyle = rightWrist.y < rightShoulder.y ? '#00FF00' : '#FF0000';
             ctx.lineWidth = 4;
@@ -308,13 +448,13 @@
             ctx.stroke();
             
             // Draw wrist circle
-            ctx.fillStyle = movement > waveThreshold ? '#FFD700' : '#00FF00';
+            ctx.fillStyle = movement > threshold ? '#FFD700' : '#00FF00';
             ctx.beginPath();
             ctx.arc(rightWrist.x, rightWrist.y, 12, 0, 2 * Math.PI);
             ctx.fill();
             
             // Draw movement indicator
-            if (movement > waveThreshold) {
+            if (movement > threshold) {
                 ctx.strokeStyle = '#FFD700';
                 ctx.lineWidth = 6;
                 ctx.beginPath();
@@ -324,7 +464,7 @@
             
             // Draw status text on canvas
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 16px Arial';
+            ctx.font = `bold ${Math.max(14, videoWidth / 40)}px Arial`;
             ctx.textAlign = 'center';
             ctx.strokeStyle = '#000000';
             ctx.lineWidth = 2;
@@ -391,9 +531,11 @@
         
         // Draw basic skeleton
         function drawBasicSkeleton(keypoints) {
+            const scaledKeypoints = scaleCoordinates(keypoints);
+            
             // Draw keypoints
             ctx.fillStyle = '#00FF00';
-            keypoints.forEach((keypoint, index) => {
+            scaledKeypoints.forEach((keypoint, index) => {
                 if (keypoint.score > 0.3) {
                     ctx.beginPath();
                     ctx.arc(keypoint.x, keypoint.y, 4, 0, 2 * Math.PI);
@@ -416,8 +558,8 @@
             ctx.lineWidth = 2;
             
             connections.forEach(([i, j]) => {
-                const kp1 = keypoints[i];
-                const kp2 = keypoints[j];
+                const kp1 = scaledKeypoints[i];
+                const kp2 = scaledKeypoints[j];
                 
                 if (kp1 && kp2 && kp1.score > 0.3 && kp2.score > 0.3) {
                     ctx.beginPath();
