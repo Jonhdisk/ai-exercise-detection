@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ตรวจจับการชนข้อมือ</title>
+    <title>ตรวจจับการโบกมือ</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.0.0/dist/pose-detection.min.js"></script>
 </head>
@@ -18,14 +18,15 @@
     </div>
     
     <div>
-        <p>จำนวนครั้งที่โบก: <span id="clapCount">0</span> / 3 ครั้ง</p>
-        <p>ตำแหน่งมือขวา: <span id="wristDistance">--</span> ค่า</p>
+        <p>สถานะการโบก: <span id="waveStatus">รอการโบกมือ</span></p>
+        <p>ตำแหน่งมือขวา (X): <span id="wristPositionX">--</span></p>
+        <p>ทิศทางการเคลื่อนไหว: <span id="movementDirection">--</span></p>
         <p>สถานะ: <span id="statusText">กำลังเริ่มระบบ...</span></p>
     </div>
     
     <div id="instructionArea">
         <h3>คำแนะนำ:</h3>
-        <p>โบกมือขวา 3 ครั้ง ระบบจะเริ่มนับถอยหลังอัตโนมัติ</p>
+        <p>ยกมือขวาขึ้นมาแล้วโบกซ้าย-ขวา 1 ครั้ง ระบบจะเริ่มนับถอยหลังอัตโนมัติ</p>
     </div>
 
     <!-- Countdown Overlay -->
@@ -64,13 +65,16 @@
         let stream;
         let animationId;
         
-        // Wrist wave detection variables
-        let waveCount = 0;
-        let waveState = 'down'; // 'down', 'up', 'ready'
-        let lastWaveTime = 0;
-        let waveThreshold = 50; // pixels for wave detection
-        let waveCooldown = 500; // milliseconds
-        let shoulderBaseline = 0; // baseline reference point
+        // Wave detection variables
+        let waveDetected = false;
+        let waveState = 'waiting'; // 'waiting', 'hand_up', 'moving_left', 'moving_right', 'completed'
+        let lastWristX = 0;
+        let wristPositions = []; // Store recent positions for smoothing
+        let movementThreshold = 15; // pixels for movement detection
+        let handUpThreshold = -30; // relative to shoulder (negative means above)
+        let movementDirection = 'none';
+        let waveStartTime = 0;
+        let maxWaveTime = 3000; // 3 seconds to complete wave
         
         // Initialize system
         async function initializeSystem() {
@@ -116,13 +120,6 @@
             }
         }
         
-        // Calculate distance between two points
-        function calculateDistance(point1, point2) {
-            const dx = point1.x - point2.x;
-            const dy = point1.y - point2.y;
-            return Math.sqrt(dx * dx + dy * dy);
-        }
-        
         // Mirror keypoint coordinates to match flipped video
         function mirrorKeypoint(keypoint, canvasWidth) {
             return {
@@ -136,8 +133,22 @@
             document.getElementById('statusText').textContent = text;
         }
         
-        // Detect right hand wave
+        // Smooth wrist position using moving average
+        function smoothWristPosition(currentX) {
+            wristPositions.push(currentX);
+            if (wristPositions.length > 5) {
+                wristPositions.shift(); // Keep only last 5 positions
+            }
+            
+            // Calculate average
+            const sum = wristPositions.reduce((a, b) => a + b, 0);
+            return sum / wristPositions.length;
+        }
+        
+        // Detect right hand wave with simplified logic
         function detectRightHandWave(keypoints) {
+            if (waveDetected) return true;
+            
             const rightWrist = keypoints[KEYPOINT_DICT.right_wrist];
             const rightShoulder = keypoints[KEYPOINT_DICT.right_shoulder];
             
@@ -151,48 +162,110 @@
             const mirroredRightShoulder = mirrorKeypoint(rightShoulder, canvas.width);
             
             const currentTime = Date.now();
-            
-            // Set shoulder baseline for wave detection
-            if (shoulderBaseline === 0) {
-                shoulderBaseline = mirroredRightShoulder.y;
-            }
-            
-            // Calculate relative position of wrist to shoulder
             const wristRelativeY = mirroredRightWrist.y - mirroredRightShoulder.y;
+            const smoothedWristX = smoothWristPosition(mirroredRightWrist.x);
             
             // Update display
-            document.getElementById('wristDistance').textContent = Math.round(wristRelativeY);
+            document.getElementById('wristPositionX').textContent = Math.round(smoothedWristX);
+            document.getElementById('movementDirection').textContent = movementDirection;
             
-            // Wave detection logic
-            if (wristRelativeY < -waveThreshold && waveState === 'down' && 
-                currentTime - lastWaveTime > waveCooldown) {
-                
-                // Hand moved up - potential wave start
-                waveState = 'up';
-                
-            } else if (wristRelativeY > waveThreshold && waveState === 'up' && 
-                       currentTime - lastWaveTime > waveCooldown) {
-                
-                // Hand moved down - complete wave
-                waveState = 'down';
-                waveCount++;
-                lastWaveTime = currentTime;
-                
-                // Update UI
-                document.getElementById('clapCount').textContent = waveCount;
-                updateStatusText(`โบกครั้งที่ ${waveCount}! ${waveCount < 3 ? `อีก ${3 - waveCount} ครั้ง` : 'เสร็จสิ้น!'}`);
-                
-                // Check if we've reached 3 waves
-                if (waveCount >= 3) {
-                    completeWaveDetection();
-                    return true;
-                }
+            // State machine for wave detection
+            switch (waveState) {
+                case 'waiting':
+                    // Check if hand is raised (above shoulder level)
+                    if (wristRelativeY < handUpThreshold) {
+                        waveState = 'hand_up';
+                        lastWristX = smoothedWristX;
+                        waveStartTime = currentTime;
+                        updateStatusText('มือขึ้นแล้ว! โบกซ้าย-ขวา');
+                        document.getElementById('waveStatus').textContent = 'มือขึ้นแล้ว - รอการโบก';
+                    }
+                    break;
+                    
+                case 'hand_up':
+                    // Check for timeout
+                    if (currentTime - waveStartTime > maxWaveTime) {
+                        resetWaveDetection();
+                        break;
+                    }
+                    
+                    // Check if hand moved significantly to the left
+                    const leftMovement = lastWristX - smoothedWristX;
+                    if (leftMovement > movementThreshold) {
+                        waveState = 'moving_left';
+                        movementDirection = 'ซ้าย';
+                        updateStatusText('โบกไปทางซ้าย! โบกกลับทางขวา');
+                        document.getElementById('waveStatus').textContent = 'กำลังโบกซ้าย';
+                    }
+                    
+                    // Check if hand moved significantly to the right
+                    const rightMovement = smoothedWristX - lastWristX;
+                    if (rightMovement > movementThreshold) {
+                        waveState = 'moving_right';
+                        movementDirection = 'ขวา';
+                        updateStatusText('โบกไปทางขวา! โบกกลับทางซ้าย');
+                        document.getElementById('waveStatus').textContent = 'กำลังโบกขวา';
+                    }
+                    break;
+                    
+                case 'moving_left':
+                    // Check for timeout
+                    if (currentTime - waveStartTime > maxWaveTime) {
+                        resetWaveDetection();
+                        break;
+                    }
+                    
+                    // Check if hand moved back to the right (completing the wave)
+                    const rightReturn = smoothedWristX - lastWristX;
+                    if (rightReturn > movementThreshold) {
+                        completeWave();
+                        return true;
+                    }
+                    break;
+                    
+                case 'moving_right':
+                    // Check for timeout
+                    if (currentTime - waveStartTime > maxWaveTime) {
+                        resetWaveDetection();
+                        break;
+                    }
+                    
+                    // Check if hand moved back to the left (completing the wave)
+                    const leftReturn = lastWristX - smoothedWristX;
+                    if (leftReturn > movementThreshold) {
+                        completeWave();
+                        return true;
+                    }
+                    break;
             }
             
             // Draw wave visualization
             drawWaveVisualization(mirroredRightWrist, mirroredRightShoulder, wristRelativeY);
             
             return false;
+        }
+        
+        // Complete wave detection
+        function completeWave() {
+            waveDetected = true;
+            waveState = 'completed';
+            movementDirection = 'เสร็จสิ้น';
+            updateStatusText('ตรวจจับการโบกมือสำเร็จ! กำลังเริ่มนับถอยหลัง...');
+            document.getElementById('waveStatus').textContent = 'โบกมือสำเร็จ!';
+            
+            // Start countdown after successful wave
+            setTimeout(() => {
+                startCountdown();
+            }, 1000);
+        }
+        
+        // Reset wave detection
+        function resetWaveDetection() {
+            waveState = 'waiting';
+            movementDirection = 'none';
+            wristPositions = [];
+            updateStatusText('หมดเวลา - เริ่มใหม่อีกครั้ง');
+            document.getElementById('waveStatus').textContent = 'รอการโบกมือ';
         }
         
         // Draw wave visualization
@@ -207,8 +280,20 @@
             ctx.stroke();
             ctx.setLineDash([]);
             
+            // Color based on hand position and wave state
+            let lineColor = '#FFFF00'; // Default yellow
+            if (relativeY < handUpThreshold) {
+                lineColor = '#00FF00'; // Green when hand is up
+            }
+            if (waveState === 'moving_left' || waveState === 'moving_right') {
+                lineColor = '#00FFFF'; // Cyan when actively waving
+            }
+            if (waveState === 'completed') {
+                lineColor = '#FF00FF'; // Magenta when completed
+            }
+            
             // Draw line from shoulder to wrist
-            ctx.strokeStyle = relativeY < -waveThreshold ? '#00FF00' : (relativeY > waveThreshold ? '#FF0000' : '#FFFF00');
+            ctx.strokeStyle = lineColor;
             ctx.lineWidth = 4;
             ctx.beginPath();
             ctx.moveTo(rightShoulder.x, rightShoulder.y);
@@ -222,42 +307,42 @@
             ctx.fill();
             
             // Draw wrist point (larger and color-coded)
-            ctx.fillStyle = relativeY < -waveThreshold ? '#00FF00' : (relativeY > waveThreshold ? '#FF0000' : '#FFFF00');
+            ctx.fillStyle = lineColor;
             ctx.beginPath();
             ctx.arc(rightWrist.x, rightWrist.y, 15, 0, 2 * Math.PI);
             ctx.fill();
             
-            // Draw wave direction indicator
+            // Draw wave state indicator
             const midX = (rightShoulder.x + rightWrist.x) / 2;
             const midY = (rightShoulder.y + rightWrist.y) / 2;
             
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 20px Arial';
+            ctx.font = 'bold 16px Arial';
             ctx.textAlign = 'center';
             ctx.strokeStyle = '#000000';
             ctx.lineWidth = 2;
             
             let statusText = '';
-            if (relativeY < -waveThreshold) {
-                statusText = '↑ UP';
-            } else if (relativeY > waveThreshold) {
-                statusText = '↓ DOWN';
-            } else {
-                statusText = '→ READY';
+            switch (waveState) {
+                case 'waiting':
+                    statusText = 'รอมือขึ้น';
+                    break;
+                case 'hand_up':
+                    statusText = 'มือขึ้นแล้ว';
+                    break;
+                case 'moving_left':
+                    statusText = '← ซ้าย';
+                    break;
+                case 'moving_right':
+                    statusText = 'ขวา →';
+                    break;
+                case 'completed':
+                    statusText = '✓ เสร็จ';
+                    break;
             }
             
             ctx.strokeText(statusText, midX, midY - 30);
             ctx.fillText(statusText, midX, midY - 30);
-        }
-        
-        // Complete wave detection
-        function completeWaveDetection() {
-            updateStatusText('ตรวจจับเสร็จสิ้น! กำลังเริ่มนับถอยหลัง...');
-            
-            // Start countdown after successful waves
-            setTimeout(() => {
-                startCountdown();
-            }, 1000);
         }
         
         // Start countdown
@@ -295,13 +380,16 @@
         
         // Reset system
         function resetSystem() {
-            waveCount = 0;
-            waveState = 'down';
-            lastWaveTime = 0;
-            shoulderBaseline = 0;
+            waveDetected = false;
+            waveState = 'waiting';
+            movementDirection = 'none';
+            wristPositions = [];
+            lastWristX = 0;
+            waveStartTime = 0;
             
-            document.getElementById('clapCount').textContent = '0';
-            document.getElementById('wristDistance').textContent = '--';
+            document.getElementById('waveStatus').textContent = 'รอการโบกมือ';
+            document.getElementById('wristPositionX').textContent = '--';
+            document.getElementById('movementDirection').textContent = '--';
             updateStatusText('รีเซ็ตเสร็จสิ้น - กำลังตรวจจับการโบกมือ...');
         }
         
@@ -317,12 +405,6 @@
                     ctx.beginPath();
                     ctx.arc(keypoint.x, keypoint.y, 6, 0, 2 * Math.PI);
                     ctx.fill();
-                    
-                    // Label keypoints for debugging
-                    ctx.fillStyle = '#FFFFFF';
-                    ctx.font = '12px Arial';
-                    ctx.fillText(index, keypoint.x + 8, keypoint.y - 8);
-                    ctx.fillStyle = '#00FF00';
                 }
             });
             
@@ -391,7 +473,7 @@
                 }
             }
             
-            animationId = requestAnimationFrame(detectPose);
+            animationId = requestAnimationFrame(detectPose);     
         }
         
         // Initialize when page loads
