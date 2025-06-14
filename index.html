@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.0.0/dist/pose-detection.min.js"></script>
 </head>
 <body>
-    <h1>ตรวจจับการชนข้อมือ</h1>
+    <h1>ตรวจจับการโบกมือ</h1>
     
     <div id="loading">กำลังโหลด MoveNet Model...</div>
     
@@ -18,14 +18,14 @@
     </div>
     
     <div>
-        <p>จำนวนครั้งที่ชน: <span id="clapCount">0</span> / 3 ครั้ง</p>
-        <p>ระยะห่างข้อมือ: <span id="wristDistance">--</span> พิกเซล</p>
+        <p>จำนวนครั้งที่โบก: <span id="clapCount">0</span> / 3 ครั้ง</p>
+        <p>ตำแหน่งมือขวา: <span id="wristDistance">--</span> ค่า</p>
         <p>สถานะ: <span id="statusText">กำลังเริ่มระบบ...</span></p>
     </div>
     
     <div id="instructionArea">
         <h3>คำแนะนำ:</h3>
-        <p>ชนข้อมือกัน 3 ครั้ง ระบบจะเริ่มนับถอยหลังอัตโนมัติ</p>
+        <p>โบกมือขวา 3 ครั้ง ระบบจะเริ่มนับถอยหลังอัตโนมัติ</p>
     </div>
 
     <!-- Countdown Overlay -->
@@ -64,12 +64,13 @@
         let stream;
         let animationId;
         
-        // Wrist clap detection variables
-        let wristClapCount = 0;
-        let wristClapState = 'apart'; // 'apart' or 'together'
-        let lastClapTime = 0;
-        let clapDetectionThreshold = 100; // pixels
-        let clapCooldown = 800; // milliseconds
+        // Wrist wave detection variables
+        let waveCount = 0;
+        let waveState = 'down'; // 'down', 'up', 'ready'
+        let lastWaveTime = 0;
+        let waveThreshold = 50; // pixels for wave detection
+        let waveCooldown = 500; // milliseconds
+        let shoulderBaseline = 0; // baseline reference point
         
         // Initialize system
         async function initializeSystem() {
@@ -103,7 +104,7 @@
                 video.addEventListener('loadeddata', () => {
                     console.log('Video loaded, starting detection...');
                     detectPose();
-                    updateStatusText('กำลังตรวจจับการชนข้อมือ...');
+                    updateStatusText('กำลังตรวจจับการโบกมือ...');
                 });
                 
                 // Hide loading
@@ -135,92 +136,125 @@
             document.getElementById('statusText').textContent = text;
         }
         
-        // Detect wrist clap
-        function detectWristClap(keypoints) {
-            const leftWrist = keypoints[KEYPOINT_DICT.left_wrist];
+        // Detect right hand wave
+        function detectRightHandWave(keypoints) {
             const rightWrist = keypoints[KEYPOINT_DICT.right_wrist];
+            const rightShoulder = keypoints[KEYPOINT_DICT.right_shoulder];
             
-            // Check if both wrists are detected with good confidence
-            if (!leftWrist || !rightWrist || leftWrist.score < 0.4 || rightWrist.score < 0.4) {
+            // Check if both points are detected with good confidence
+            if (!rightWrist || !rightShoulder || rightWrist.score < 0.4 || rightShoulder.score < 0.4) {
                 return false;
             }
             
-            // Mirror the wrist coordinates to match the flipped video display
-            const mirroredLeftWrist = mirrorKeypoint(leftWrist, canvas.width);
+            // Mirror the coordinates to match the flipped video display
             const mirroredRightWrist = mirrorKeypoint(rightWrist, canvas.width);
+            const mirroredRightShoulder = mirrorKeypoint(rightShoulder, canvas.width);
             
             const currentTime = Date.now();
-            const wristDistance = calculateDistance(mirroredLeftWrist, mirroredRightWrist);
             
-            // Update distance display
-            document.getElementById('wristDistance').textContent = Math.round(wristDistance);
-            
-            // Detect clap (wrists coming together)
-            if (wristDistance < clapDetectionThreshold && wristClapState === 'apart' && 
-                currentTime - lastClapTime > clapCooldown) {
-                
-                wristClapState = 'together';
-                wristClapCount++;
-                lastClapTime = currentTime;
-                
-                // Update UI
-                document.getElementById('clapCount').textContent = wristClapCount;
-                updateStatusText(`ชนครั้งที่ ${wristClapCount}! ${wristClapCount < 3 ? `อีก ${3 - wristClapCount} ครั้ง` : 'เสร็จสิ้น!'}`);
-                
-                // Check if we've reached 3 claps
-                if (wristClapCount >= 3) {
-                    completeWristClapDetection();
-                    return true;
-                }
-                
-            } else if (wristDistance > clapDetectionThreshold * 1.5 && wristClapState === 'together') {
-                wristClapState = 'apart';
+            // Set shoulder baseline for wave detection
+            if (shoulderBaseline === 0) {
+                shoulderBaseline = mirroredRightShoulder.y;
             }
             
-            // Draw wrist clap visualization using mirrored coordinates
-            drawWristClapVisualization(mirroredLeftWrist, mirroredRightWrist, wristDistance);
+            // Calculate relative position of wrist to shoulder
+            const wristRelativeY = mirroredRightWrist.y - mirroredRightShoulder.y;
+            
+            // Update display
+            document.getElementById('wristDistance').textContent = Math.round(wristRelativeY);
+            
+            // Wave detection logic
+            if (wristRelativeY < -waveThreshold && waveState === 'down' && 
+                currentTime - lastWaveTime > waveCooldown) {
+                
+                // Hand moved up - potential wave start
+                waveState = 'up';
+                
+            } else if (wristRelativeY > waveThreshold && waveState === 'up' && 
+                       currentTime - lastWaveTime > waveCooldown) {
+                
+                // Hand moved down - complete wave
+                waveState = 'down';
+                waveCount++;
+                lastWaveTime = currentTime;
+                
+                // Update UI
+                document.getElementById('clapCount').textContent = waveCount;
+                updateStatusText(`โบกครั้งที่ ${waveCount}! ${waveCount < 3 ? `อีก ${3 - waveCount} ครั้ง` : 'เสร็จสิ้น!'}`);
+                
+                // Check if we've reached 3 waves
+                if (waveCount >= 3) {
+                    completeWaveDetection();
+                    return true;
+                }
+            }
+            
+            // Draw wave visualization
+            drawWaveVisualization(mirroredRightWrist, mirroredRightShoulder, wristRelativeY);
             
             return false;
         }
         
-        // Draw wrist clap visualization
-        function drawWristClapVisualization(leftWrist, rightWrist, distance) {
-            // Draw line between wrists (on top of skeleton)
-            ctx.strokeStyle = distance < clapDetectionThreshold ? '#FF0000' : '#FFFF00';
-            ctx.lineWidth = 6;
+        // Draw wave visualization
+        function drawWaveVisualization(rightWrist, rightShoulder, relativeY) {
+            // Draw reference line from shoulder
+            ctx.strokeStyle = '#888888';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
             ctx.beginPath();
-            ctx.moveTo(leftWrist.x, leftWrist.y);
+            ctx.moveTo(rightShoulder.x - 50, rightShoulder.y);
+            ctx.lineTo(rightShoulder.x + 50, rightShoulder.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Draw line from shoulder to wrist
+            ctx.strokeStyle = relativeY < -waveThreshold ? '#00FF00' : (relativeY > waveThreshold ? '#FF0000' : '#FFFF00');
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(rightShoulder.x, rightShoulder.y);
             ctx.lineTo(rightWrist.x, rightWrist.y);
             ctx.stroke();
             
-            // Draw wrist circles (larger and more visible)
-            ctx.fillStyle = distance < clapDetectionThreshold ? '#FF0000' : '#FFFF00';
+            // Draw shoulder point
+            ctx.fillStyle = '#0088FF';
             ctx.beginPath();
-            ctx.arc(leftWrist.x, leftWrist.y, 15, 0, 2 * Math.PI);
+            ctx.arc(rightShoulder.x, rightShoulder.y, 12, 0, 2 * Math.PI);
             ctx.fill();
             
+            // Draw wrist point (larger and color-coded)
+            ctx.fillStyle = relativeY < -waveThreshold ? '#00FF00' : (relativeY > waveThreshold ? '#FF0000' : '#FFFF00');
             ctx.beginPath();
             ctx.arc(rightWrist.x, rightWrist.y, 15, 0, 2 * Math.PI);
             ctx.fill();
             
-            // Draw distance text
-            const midX = (leftWrist.x + rightWrist.x) / 2;
-            const midY = (leftWrist.y + rightWrist.y) / 2;
+            // Draw wave direction indicator
+            const midX = (rightShoulder.x + rightWrist.x) / 2;
+            const midY = (rightShoulder.y + rightWrist.y) / 2;
             
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 24px Arial';
+            ctx.font = 'bold 20px Arial';
             ctx.textAlign = 'center';
             ctx.strokeStyle = '#000000';
-            ctx.lineWidth = 3;
-            ctx.strokeText(`${Math.round(distance)}px`, midX, midY - 30);
-            ctx.fillText(`${Math.round(distance)}px`, midX, midY - 30);
+            ctx.lineWidth = 2;
+            
+            let statusText = '';
+            if (relativeY < -waveThreshold) {
+                statusText = '↑ UP';
+            } else if (relativeY > waveThreshold) {
+                statusText = '↓ DOWN';
+            } else {
+                statusText = '→ READY';
+            }
+            
+            ctx.strokeText(statusText, midX, midY - 30);
+            ctx.fillText(statusText, midX, midY - 30);
         }
         
-        // Complete wrist clap detection
-        function completeWristClapDetection() {
+        // Complete wave detection
+        function completeWaveDetection() {
             updateStatusText('ตรวจจับเสร็จสิ้น! กำลังเริ่มนับถอยหลัง...');
             
-            // Start countdown after successful wrist claps
+            // Start countdown after successful waves
             setTimeout(() => {
                 startCountdown();
             }, 1000);
@@ -261,13 +295,14 @@
         
         // Reset system
         function resetSystem() {
-            wristClapCount = 0;
-            wristClapState = 'apart';
-            lastClapTime = 0;
+            waveCount = 0;
+            waveState = 'down';
+            lastWaveTime = 0;
+            shoulderBaseline = 0;
             
             document.getElementById('clapCount').textContent = '0';
             document.getElementById('wristDistance').textContent = '--';
-            updateStatusText('รีเซ็ตเสร็จสิ้น - กำลังตรวจจับการชนข้อมือ...');
+            updateStatusText('รีเซ็ตเสร็จสิ้น - กำลังตรวจจับการโบกมือ...');
         }
         
         // Draw basic skeleton with mirrored coordinates
@@ -337,8 +372,8 @@
                 // Draw basic skeleton first (with mirrored coordinates)
                 drawBasicSkeleton(keypoints);
                 
-                // Then check for wrist clap and draw wrist visualization
-                detectWristClap(keypoints);
+                // Then check for right hand wave and draw wave visualization
+                detectRightHandWave(keypoints);
                 
                 return keypoints;
             }
